@@ -2,121 +2,324 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-void decode_instruction(uint16_t bin) {
-    int hex1 = 0x0FF0;
-    int hex2 = 0x00F0;
-    int hex3 = 0x0FFF;
-    int hex4 = 0x0F00;
-    int hex5 = 0x000F;
-      printf("%02X --- ",bin);
-    if (bin >= 0x0000 && bin <= 0x0FFF) {
-        if (bin == 0x00E0) {
+typedef struct
+{
+    uint8_t V[0x10];
+    uint16_t PC;
+    uint16_t I;
+    uint8_t DT;
+    uint8_t ST;
+} Chip8;
+
+typedef struct
+{
+
+    uint8_t x;
+    uint8_t y;
+    uint8_t kk;
+    uint8_t n;
+    uint8_t nnn;
+
+} Instruction;
+
+Instruction nextInstruction(uint16_t bin)
+{
+
+    Instruction inst;
+
+    inst.x = (0x0F00 & bin) >> 8;
+    inst.y = (0x00F0 & bin) >> 4;
+    inst.kk = 0x00FF & bin;
+    inst.n = (0x000F & bin);
+    inst.nnn = (0x0FFF & bin);
+
+    return inst;
+}
+
+void decode_instruction(uint16_t bin, Chip8 c8)
+{
+
+    Instruction inst = nextInstruction(bin);
+
+    printf("%02X --- ", bin);
+    if (bin >= 0x0000 && bin <= 0x0FFF)
+    {
+        if (bin == 0x00E0)
+        {
             printf("00E0 - CLS\n");
         }
-        else if (bin == 0x00EE) {
+        else if (bin == 0x00EE)
+        {
             printf("00EE - RET\n");
         }
-        else if (bin >= 0x0000 && bin <=0x0FFF) {
+        else if (bin >= 0x0000 && bin <= 0x0FFF)
+        {
             printf("0nnn - SYS addr\n");
         }
     }
 
-    if (bin >= 0x1000 && bin <= 0x1FFF) {
+    if (bin >= 0x1000 && bin <= 0x1FFF)
+    {
         printf("1nnn - JP addr\n");
     }
-    if (bin >= 0x2000 && bin <= 0x2FFF) {
+    if (bin >= 0x2000 && bin <= 0x2FFF)
+    {
         printf("2nnn - CALL addr\n");
     }
-    if (bin >= 0x3000 && bin <= 0x3FFF) {
-        int k = (bin & hex2) >> 4;
-        int x = (bin & hex1) >> 8;
-        int k1 = (bin & hex5);
-        if (k1 == k) {
-            printf("3xkk - SE Vx, byte x=%d k=%d\n", x, k);
+    if (bin >= 0x3000 && bin <= 0x3FFF)
+    {
+
+        if (c8.V[inst.x] == inst.kk)
+        {
+
+            c8.PC += 2;
+            printf("3xkk - SE Vx, byte x=%d k=%d\n", inst.x, inst.kk);
         }
     }
-    if (bin >= 0x4000 && bin <= 0x4FFF) {
-        int k = (bin & hex2) >> 4;
-        int x = (bin & hex1) >> 8;
-        int k1 = (bin & hex5);
-        if (k1 == k) {
-            printf("4xkk - SNE Vx, byte x=%d k=%d\n", x, k);
+    if (bin >= 0x4000 && bin <= 0x4FFF)
+    {
+
+        if (c8.V[inst.x] != inst.kk)
+        {
+
+            c8.PC += 2;
+            printf("4xkk - SNE Vx, byte x=%d k=%d\n", inst.x, inst.kk);
         }
     }
-    if (bin >= 0x5000 && bin <= 0x5FF0) {
-        int x = (bin & hex1) >> 8;
-        int y = (bin & hex2) >> 4;
-        printf("5xy0 - SE Vx, Vy x=%d y=%d\n", x, y);
-    }
-    if (bin >= 0x6000 && bin <= 0x6FFF) {
-        int k = (bin & hex2) >> 4;
-        int x = (bin & hex1) >> 8;
-        int k1 = (bin & hex5);
-        
-            printf("6xkk - LD Vx, byte x=%d k=%d k1=%d\n", x, k,k1);
-        
-    }
-    if (bin >= 0x7000 && bin <= 0x7FFF) {
-        int k = (bin & hex2) >> 4;
-        int x = (bin & hex1) >> 8;
-        int k1 = (bin & hex5);
-        
-            printf("7xkk - ADD Vx, byte x=%d k=%d\n", x, k);
-        
-    }
-    if (bin >= 0x8000 && bin <= 0x8FFF) {
-        switch (bin & 0x000F) {
-            case 0: printf("8xy0 - LD Vx, Vy\n"); break;
-            case 1: printf("8xy1 - OR Vx, Vy\n"); break;
-            case 2: printf("8xy2 - AND Vx, Vy\n"); break;
-            case 3: printf("8xy3 - XOR Vx, Vy\n"); break;
-            case 4: printf("8xy4 - ADD Vx, Vy\n"); break;
-            case 5: printf("8xy5 - SUB Vx, Vy\n"); break;
-            case 6: printf("8xy6 - SHR Vx {, Vy}\n"); break;
-            case 7: printf("8xy7 - SUBN Vx, Vy\n"); break;
-            case 0xE: printf("8xyE - SHL Vx {, Vy}\n"); break;
+    if (bin >= 0x5000 && bin <= 0x5FF0)
+    {
+
+        if (c8.V[inst.x] == c8.V[inst.y])
+        {
+            c8.PC += 2;
+
+            printf("5xy0 - SE Vx, Vy x=%d y=%d\n", inst.x, inst.y);
         }
     }
-    if (bin >= 0x9000 && bin <= 0x9FF0) {
+    if (bin >= 0x6000 && bin <= 0x6FFF)
+    {
+
+        if (c8.V[inst.x] == inst.kk)
+        {
+
+            c8.PC += 2;
+
+            printf("6xkk - LD Vx, byte x=%d kk=%d\n", inst.x, inst.kk);
+        }
+    }
+    if (bin >= 0x7000 && bin <= 0x7FFF)
+    {
+
+        c8.V[inst.x] = c8.V[inst.x] + inst.kk;
+
+        printf("7xkk - ADD Vx, byte x=%d k=%d\n", inst.x, inst.kk);
+    }
+    if (bin >= 0x8000 && bin <= 0x8FFF)
+    {
+
+        switch (bin & 0x000F)
+        {
+        case 0:
+            printf("8xy0 - LD Vx, Vy\n");
+            {
+                c8.V[inst.x] = c8.V[inst.y];
+            }
+            break;
+        case 1:
+            printf("8xy1 - OR Vx, Vy\n");
+            {
+                c8.V[inst.x] = (c8.V[inst.x] | c8.V[inst.y]);
+            }
+            break;
+        case 2:
+            printf("8xy2 - AND Vx, Vy\n");
+            {
+                c8.V[inst.x] = (c8.V[inst.x] & c8.V[inst.y]);
+            }
+            break;
+        case 3:
+            printf("8xy3 - XOR Vx, Vy\n");
+            {
+                c8.V[inst.x] = c8.V[inst.x] ^ c8.V[inst.y];
+            }
+            break;
+
+        case 4:
+            printf("8xy4 - ADD Vx, Vy\n");
+            {
+                c8.V[inst.x] = c8.V[inst.x] + c8.V[inst.y];
+            }
+            break;
+
+        case 5:
+            printf("8xy5 - SUB Vx, Vy\n");
+            {
+                c8.V[inst.x] = c8.V[inst.x] - c8.V[inst.y];
+
+                if (c8.V[inst.x] < c8.V[inst.y])
+                {
+                    c8.V[0xF] = 1;
+                }
+                else
+                {
+                    c8.V[0xF] = 0;
+                }
+            }
+            break;
+        case 6:
+            printf("8xy6 - SHR Vx {, Vy}\n");
+            {
+                c8.V[inst.x] = c8.V[inst.x] >> 1;
+
+                if ((c8.V[inst.x] & 0x1) == 0x1)
+                {
+                    c8.V[0xF] = 1;
+                }
+                else
+                {
+                    c8.V[0xF] = 0;
+                }
+            }
+            break;
+        case 7:
+            printf("8xy7 - SUBN Vx, Vy\n");
+            {
+                c8.V[inst.x] = c8.V[inst.y] - c8.V[inst.x];
+                if (c8.V[inst.x] > c8.V[inst.y])
+                {
+                    c8.V[0xF] = 1;
+                }
+                else
+                {
+                    c8.V[0xF] = 0;
+                }
+                c8.V[inst.x] / 2;
+            }
+            break;
+        case 0xE:
+            printf("8xyE - SHL Vx {, Vy}\n");
+            {
+                c8.V[inst.x] = c8.V[inst.x] << 1;
+
+                if ((c8.V[inst.x] & 0b10000000) == 0b10000000)
+                {
+                    c8.V[0xF] = 1;
+                }
+                else
+                {
+                    c8.V[0xF] = 0;
+                }
+                c8.V[inst.x] * 2;
+            }
+            break;
+        }
+    }
+    if (bin >= 0x9000 && bin <= 0x9FF0)
+    {
+        if (c8.V[inst.x] != c8.V[inst.y])
+        {
+            c8.PC += 2;
+        }
+
         printf("9xy0 - SNE Vx, Vy\n");
     }
 
-    switch (bin & 0xF000) {
-        case 0xA000: printf("Annn - LD I, addr\n"); break;
-        case 0xB000: printf("Bnnn - JP V0, addr\n"); break;
-        case 0xC000: printf("Cxkk - RND Vx, byte\n"); break;
-        case 0xD000: printf("Dxyn - DRW Vx, Vy, nibble\n"); break;
-        case 0xE000:
-            if ((bin & 0x00FF) == 0x009E) printf("Ex9E - SKP Vx\n");
-            else printf("ExA1 - SKNP Vx\n");
-            break;
-        case 0xF000:
-            if ((bin & 0x00FF) == 0x0007) printf("Fx07 - LD Vx, DT\n");
-            if ((bin & 0x00FF) == 0x000A) printf("Fx0A - LD Vx, K\n");
-            if ((bin & 0x00FF) == 0x0015) printf("Fx15 - LD DT, Vx\n");
-            if ((bin & 0x00FF) == 0x0018) printf("Fx18 - LD ST, Vx\n");
-            if ((bin & 0x00FF) == 0x001E) printf("Fx1E - ADD I, Vx\n");
-            if ((bin & 0x00FF) == 0x0029) printf("Fx29 - LD F, Vx\n");
-            if ((bin & 0x00FF) == 0x0033) printf("Fx33 - LD B, Vx\n");
-            if ((bin & 0x00FF) == 0x0055) printf("Fx55 - LD [I], Vx\n");
-            if ((bin & 0x00FF) == 0x0065) printf("Fx65 - LD Vx, [I]\n");
-            break;
+    switch (bin & 0xF000)
+    {
+    case 0xA000:
+        printf("Annn - LD I, addr\n");
+        {
+            c8.I = inst.nnn;
+        }
+        break;
+    case 0xB000:
+        printf("Bnnn - JP V0, addr\n");
+        {
+            c8.PC = inst.nnn + c8.V[0];
+        }
+        break;
+    case 0xC000:
+        printf("Cxkk - RND Vx, byte\n");
+        {
+
+            int num = rand() % 256;
+            c8.V[inst.x] = num & inst.kk;
+        }
+        break;
+    case 0xD000:
+        printf("Dxyn - DRW Vx, Vy, nibble\n");
+        {
+
+            // GRAPHICS
+        }
+        break;
+    case 0xE000:
+        if ((bin & 0x00FF) == 0x009E)
+        {
+
+            printf("Ex9E - SKP Vx\n");
+        }
+        else{
+            printf("ExA1 - SKNP Vx\n");
+        }
+        break;
+    case 0xF000:
+        if ((bin & 0x00FF) == 0x0007){
+            printf("Fx07 - LD Vx, DT\n");
+            c8.V[inst.x]= c8.DT;
+        }
+        if ((bin & 0x00FF) == 0x000A)
+            printf("Fx0A - LD Vx, K\n");
+        if ((bin & 0x00FF) == 0x0015){
+
+            c8.DT = c8.V[inst.x] ;
+            printf("Fx15 - LD DT, Vx\n");
+        }
+
+        if ((bin & 0x00FF) == 0x0018){
+            
+            c8.ST = c8.V[inst.x];
+            printf("Fx18 - LD ST, Vx\n");
+        }
+        if ((bin & 0x00FF) == 0x001E){
+            c8.I += c8.V[inst.x];
+            printf("Fx1E - ADD I, Vx\n");
+        }
+        if ((bin & 0x00FF) == 0x0029)
+            printf("Fx29 - LD F, Vx\n");
+        if ((bin & 0x00FF) == 0x0033)
+            printf("Fx33 - LD B, Vx\n");
+        if ((bin & 0x00FF) == 0x0055){
+            c8.V[0] = c8.V[inst.x];
+            //something to do with I
+            c8.I += inst.x+1;
+            printf("Fx55 - LD [I], Vx\n");
+        }
+        if ((bin & 0x00FF) == 0x0065)
+            printf("Fx65 - LD Vx, [I]\n");
+        break;
     }
 }
 
-int main() {
-    FILE* fp = fopen("C:\\Users\\byyuv\\Downloads\\CUBE8.ch8", "rb");
-    if (!fp) {
+int main()
+{
+    Instruction inst;
+    Chip8 c8;
+    FILE *fp = fopen("C:\\Users\\byyuv\\Downloads\\CUBE8.ch8", "rb");
+    if (!fp)
+    {
         printf("Error opening file\n");
         return 1;
     }
 
     fseek(fp, 0, SEEK_END);
-    int size = ftell(fp);
+    uint8_t size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
 
-    uint8_t* arr = (uint8_t*) malloc(size);
-    if (!arr) {
+    
+   uint8_t *arr = (uint8_t *)malloc(size);
+    if (!arr)
+    {
         printf("Error allocating memory\n");
         fclose(fp);
         return 1;
@@ -125,9 +328,10 @@ int main() {
     fread(arr, sizeof(arr[0]), size, fp);
 
     // Read instructions 2 bytes at a time
-    for (int i = 0; i < size; i += 2) {
+    for (int i = 0; i < size; i += 2)
+    {
         uint16_t bin = (arr[i] << 8) | arr[i + 1]; // combine bytes into a 16-bit instruction
-        decode_instruction(bin);
+        decode_instruction(bin, c8);
     }
 
     free(arr);
