@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <SDL3/SDL_init.h>
+#include <SDL3/SDL_video.h>
+#include <SDL3/SDL_events.h>
 
 typedef struct
 {
@@ -301,6 +304,25 @@ void decode_instruction(uint16_t bin, Chip8 c8)
     }
 }
 
+void cleanup_sdl(void) {
+    SDL_QuitSubSystem(SDL_INIT_VIDEO);
+    SDL_Quit();
+}
+
+void init_sdl(void) {
+   bool success = SDL_Init(SDL_INIT_VIDEO);
+   if (success != true) {
+        fprintf(stderr, "Following error occured when trying to initialize SDL Video subsystem: %s\n", SDL_GetError());
+        cleanup_sdl();
+        exit(EXIT_FAILURE);
+   }
+
+   success = SDL_SetAppMetadata("Chip8", "1.0", "com.yuvrajbhadoria.chip8");
+   if (success != true) {
+        fprintf(stderr, "Following error occured when trying to set metadata: %s\n", SDL_GetError());
+   }
+}
+
 int main()
 {
     Instruction inst;
@@ -336,5 +358,31 @@ int main()
 
     free(arr);
     fclose(fp);
+
+    init_sdl();
+
+    SDL_Window *window = SDL_CreateWindow("Chip8", 800, 600, 0);
+
+    if (window == NULL) {
+        fprintf(stderr, "Following error occured when trying to create a window: %s\n", SDL_GetError());
+        cleanup_sdl();
+        exit(EXIT_FAILURE);
+    }
+
+    bool is_running = true;
+
+    while (is_running) {
+        SDL_Event event;
+
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
+                fprintf(stdout, "Requested close\n");
+                is_running = false;
+            }
+        }
+    }
+
+    cleanup_sdl();
+
     return 0;
 }
