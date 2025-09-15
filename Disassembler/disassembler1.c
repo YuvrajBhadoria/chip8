@@ -1,8 +1,10 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_init.h>
+#include <SDL3/SDL_oldnames.h>
 #include <SDL3/SDL_render.h>
 #include <SDL3/SDL_video.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -326,7 +328,7 @@ int main() {
   // To Scale window
   int scale;
   scanf("%d",&scale);
-  SDL_Window *window = SDL_CreateWindow("Chip8", 64*scale,32*scale,SDL_WINDOW_RESIZABLE);
+  SDL_Window *window = SDL_CreateWindow("Chip8", 64*scale,32*scale,0);
 
   if (window == NULL) {
     fprintf(stderr,
@@ -336,7 +338,7 @@ int main() {
     exit(EXIT_FAILURE);
   }
 
-  
+  SDL_SetWindowResizable(window,false);
 
   SDL_Renderer *renderer = SDL_CreateRenderer(window, NULL);
   if (!renderer) {
@@ -346,9 +348,9 @@ int main() {
   }
 
 
-  SDL_SetRenderLogicalPresentation(renderer, 64, 32,SDL_LOGICAL_PRESENTATION_STRETCH);
 
- 
+  SDL_SetRenderLogicalPresentation(renderer, 64, 32,SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
+   
   bool is_running = true;
 
   while (is_running) {
@@ -376,6 +378,6 @@ int main() {
   SDL_DestroyRenderer(renderer);
   SDL_DestroyWindow(window);
   cleanup_sdl();
-
+// woohoooo checking commits :) sorry frothy for being annoying and Dumb :) <3 !!
   return 0;
 }
