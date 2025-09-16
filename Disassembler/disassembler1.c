@@ -8,6 +8,13 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+#define SCREEN_WIDTH 64
+#define SCREEN_HEIGHT 32
+  uint8_t memory[4096];
+  uint8_t display[SCREEN_HEIGHT][SCREEN_WIDTH];
+  bool drawflag = false ;
 
 typedef struct {
   uint8_t V[0x10];
@@ -48,6 +55,11 @@ void decode_instruction(uint16_t bin, Chip8 c8) {
   printf("%02X --- ", bin);
   if (bin >= 0x0000 && bin <= 0x0FFF) {
     if (bin == 0x00E0) {
+
+      memset(display, 0, sizeof(display));
+      drawflag = true;
+
+
       printf("00E0 - CLS\n");
     } else if (bin == 0x00EE) {
       printf("00EE - RET\n");
@@ -219,8 +231,32 @@ void decode_instruction(uint16_t bin, Chip8 c8) {
   case 0xD000:
     printf("Dxyn - DRW Vx, Vy, nibble\n");
     {
+        uint8_t x = c8.V[inst.x];
+        uint8_t y = c8.V[inst.y];
+        uint8_t numberOfSprites = inst.n;
+        c8.V[0xF] = 0;
 
-      // GRAPHICS
+        for (int spritePosition = 0; spritePosition < numberOfSprites; spritePosition++) {
+          uint8_t spriteByte = memory[c8.I + spritePosition];
+
+          for (int spritebit = 0;spritebit < 8;spritebit++) {
+
+                int pixel_x = (x + spritebit) % SCREEN_WIDTH;
+                int pixel_y = (y + spritePosition) % SCREEN_HEIGHT;
+
+                uint8_t spritePixel = (spriteByte >> (7 - spritebit)) & 1;
+
+                if (spritePixel) {
+                    if (display[pixel_y][pixel_x] == 1) {
+                        c8.V[0xF] = 1; 
+                    } 
+                    display[pixel_y][pixel_x] ^= 1; 
+
+                }
+          }
+        }
+
+        drawflag = true;
     }
     break;
   case 0xE000:
@@ -272,6 +308,7 @@ void decode_instruction(uint16_t bin, Chip8 c8) {
 void cleanup_sdl(void) {
   SDL_QuitSubSystem(SDL_INIT_VIDEO);
   SDL_Quit();
+  
 }
 
 void init_sdl(void) {
@@ -291,10 +328,39 @@ void init_sdl(void) {
             SDL_GetError());
   }
 }
+void updateScreen(SDL_Renderer *renderer) {
+    if (!drawflag) return; 
+
+  SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+    
+      SDL_RenderClear(renderer);
+
+    SDL_SetRenderDrawColor(renderer, 255, 0, 0, 0);
+
+    
+                SDL_FRect rect = {
+                    .x = 0,
+                    .y = 0,
+                    .w = 1,
+                    .h = 1
+                };
+                SDL_RenderFillRect(renderer, &rect);
+          
+      
+    SDL_RenderPresent(renderer);
+    drawflag = false;
+}
+
 
 int main() {
+
+
   Instruction inst;
   Chip8 c8;
+
+
+
+
   FILE *fp = fopen("./CUBE8.ch8", "rb");
   if (!fp) {
     printf("Error opening file\n");
@@ -316,8 +382,7 @@ int main() {
 
   // Read instructions 2 bytes at a time
   for (int i = 0; i < size; i += 2) {
-    uint16_t bin =
-        (arr[i] << 8) | arr[i + 1]; // combine bytes into a 16-bit instruction
+    uint16_t bin =(arr[i] << 8) | arr[i + 1]; // combine bytes into a 16-bit instruction
     decode_instruction(bin, c8);
   }
 
@@ -338,7 +403,10 @@ int main() {
     exit(EXIT_FAILURE);
   }
 
-  SDL_SetWindowResizable(window,false);
+ bool success = SDL_SetWindowResizable(window,false);
+  if(!success){
+    fprintf(stderr, "Could not disable window resizing: %s\n" , SDL_GetError());
+  }
 
   SDL_Renderer *renderer = SDL_CreateRenderer(window, NULL);
   if (!renderer) {
@@ -362,22 +430,12 @@ int main() {
         is_running = false;
       }
     }
-    SDL_FRect rect = {0, 0, 1, 1};
-
-    SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
-    SDL_RenderClear(renderer);
-
-
-    SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-    SDL_RenderFillRect(renderer, &rect);
-
-    
-    SDL_RenderPresent(renderer);
+    updateScreen(renderer);
 
   }
   SDL_DestroyRenderer(renderer);
   SDL_DestroyWindow(window);
   cleanup_sdl();
-// woohoooo checking commits :) sorry frothy for being annoying and Dumb :) <3 !!
+
   return 0;
 }
