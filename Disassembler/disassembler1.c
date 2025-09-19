@@ -1,6 +1,7 @@
     #include <SDL3/SDL.h>
     #include <SDL3/SDL_events.h>
     #include <SDL3/SDL_init.h>
+#include <SDL3/SDL_keycode.h>
     #include <SDL3/SDL_oldnames.h>
     #include <SDL3/SDL_render.h>
     #include <SDL3/SDL_video.h>
@@ -17,14 +18,19 @@
     #define SCREEN_HEIGHT 32
     uint8_t memory[4096];
 
+
     uint8_t display[SCREEN_HEIGHT][SCREEN_WIDTH];
+    bool keys[16];
     bool drawflag = false;
+
+    bool waiting_for_key = false;
+    uint8_t waiting_vx_index = 0;
 
     typedef struct {
       uint8_t V[16];
       uint16_t PC;
       uint16_t I;
-      uint64_t stack[16];
+      uint16_t stack[16];
       uint8_t sp;
       uint8_t delayTimer;
       uint8_t soundTimer;
@@ -52,6 +58,24 @@
 
       return inst;
     }
+    static const uint8_t chip8_fontset[80] = {
+  0xF0,0x90,0x90,0x90,0xF0, 
+  0x20,0x60,0x20,0x20,0x70, 
+  0xF0,0x10,0xF0,0x80,0xF0, 
+  0xF0,0x10,0xF0,0x10,0xF0, 
+  0x90,0x90,0xF0,0x10,0x10, 
+  0xF0,0x80,0xF0,0x10,0xF0, 
+  0xF0,0x80,0xF0,0x90,0xF0, 
+  0xF0,0x10,0x20,0x40,0x40, 
+  0xF0,0x90,0xF0,0x90,0xF0, 
+  0xF0,0x90,0xF0,0x10,0xF0, 
+  0xF0,0x90,0xF0,0x90,0x90, 
+  0xE0,0x90,0xE0,0x90,0xE0, 
+  0xF0,0x80,0x80,0x80,0xF0, 
+  0xE0,0x90,0x90,0x90,0xE0, 
+  0xF0,0x80,0xF0,0x80,0xF0, 
+  0xF0,0x80,0xF0,0x80,0x80  
+};
     
     void decode_instruction(uint16_t bin, Chip8 *c8) {
 
@@ -316,15 +340,23 @@
         }
         break;
       case 0xE000:
-        if ((bin & 0x00FF) == 0x009E) {
-
-          printf("Ex9E - SKP Vx\n");
-    
+    if ((bin & 0x00FF) == 0x009E) { // SKP Vx
+        printf("Ex9E - SKP Vx\n");
+        if (keys[c8->V[inst.x]]) {
+            c8->PC += 4;
         } else {
-          printf("ExA1 - SKNP Vx\n");
-        
+            c8->PC += 2;
         }
-        break;
+    } else if ((bin & 0x00FF) == 0x00A1) { // SKNP Vx
+        printf("ExA1 - SKNP Vx\n");
+        if (!keys[c8->V[inst.x]]) {
+            c8->PC += 4;
+        } else {
+            c8->PC += 2;
+        }
+    }
+    break;
+
       case 0xF000:
         if ((bin & 0x00FF) == 0x0007) {
           printf("Fx07 - LD Vx, DT\n");
@@ -334,6 +366,9 @@
         }
         if ((bin & 0x00FF) == 0x000A)
           printf("Fx0A - LD Vx, K\n");
+
+            waiting_for_key = true;
+            waiting_vx_index = inst.x;
     
         if ((bin & 0x00FF) == 0x0015) {
 
@@ -358,7 +393,7 @@
         }
         if ((bin & 0x00FF) == 0x0029)
         printf("Fx29 - LD F, Vx\n");
-          c8->I = c8->V[inst.x] * 5;
+          c8->I =0x50 + c8->V[inst.x] * 5;
             c8->PC+=2;
           
       
@@ -443,12 +478,60 @@
           }
       }
                 
-            
-        
-          
+
+
       SDL_RenderPresent(renderer);
       drawflag = false;
     }
+
+int sdlkey_to_chip8_key(SDL_Keycode k) {
+    switch (k) {
+        case SDLK_1: return 0x1;
+        case SDLK_2: return 0x2;
+        case SDLK_3: return 0x3;
+        case SDLK_4: return 0xC;
+        case SDLK_Q: return 0x4;
+        case SDLK_W: return 0x5;
+        case SDLK_E: return 0x6;
+        case SDLK_R: return 0xD;
+        case SDLK_A: return 0x7;
+        case SDLK_S: return 0x8;
+        case SDLK_D: return 0x9;
+        case SDLK_F: return 0xE;
+        case SDLK_Z: return 0xA;
+        case SDLK_X: return 0x0;
+        case SDLK_C: return 0xB;
+        case SDLK_V: return 0xF;
+        default: return -1;
+    }
+}
+
+
+void handle_key_event(SDL_Event *ev, Chip8 *c8) {
+    if (ev->type != SDL_EVENT_KEY_DOWN && ev->type != SDL_EVENT_KEY_UP) return;
+    bool pressed = (ev->type == SDL_EVENT_KEY_DOWN);
+    int k = sdlkey_to_chip8_key(ev->key.key);
+    if (k >= 0) keys[k] = pressed;
+
+    if (waiting_for_key && pressed) {
+        c8->V[waiting_vx_index] = (uint8_t)k;
+        c8->PC += 2; 
+        waiting_for_key = false;
+    }
+}
+uint32_t last_timer_tick = 0;
+
+void tick_timers(Chip8 *c8) {
+    uint32_t now = SDL_GetTicks();
+    if (now - last_timer_tick >= 16) { 
+        if (c8->delayTimer > 0) c8->delayTimer--;
+        if (c8->soundTimer > 0) {
+            c8->soundTimer--;
+        }
+        last_timer_tick = now;
+    }
+}
+
 
     int main() {
 
@@ -459,9 +542,10 @@
       c8.I = 0;
       memset(c8.V,0,sizeof(c8.V));
       memset(c8.stack, 0, sizeof(c8.stack));
+      memcpy(memory + 0x50, chip8_fontset, sizeof(chip8_fontset));
       c8.sp = 0;
-
-      FILE *fp = fopen("./CUBE8.ch8", "rb");
+       waiting_for_key = false;
+      FILE *fp = fopen("./pong.ch8", "rb");
       if (!fp) {
         printf("Error opening file\n");
         return 1;
@@ -472,11 +556,6 @@
       fseek(fp, 0, SEEK_SET);
 
       fread(memory + 0x200, sizeof(memory[0]), size, fp);
-
-
-      
-
-
     
       fclose(fp);
 
@@ -511,6 +590,9 @@
       int instructionPerFrame = 10;
       c8.PC = 0x200;
 
+      uint32_t lastCycle = SDL_GetTicks();
+
+
       while (is_running) {
         SDL_Event event;
 
@@ -518,21 +600,27 @@
           if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
             fprintf(stdout, "Requested close\n");
             is_running = false;
-          }
-        }
-
-          
-      
-          // Read instructions 2 bytes at a time
-          
-                uint16_t bin = (memory[c8.PC] << 8) | memory[c8.PC + 1]; // combine bytes into a 16-bit instruction
-
+          }else if (event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP) {
+                handle_key_event(&event, &c8); // FIX: correct function call
+            }
         
+      }
+  
+        for (int i = 0; i < instructionPerFrame; i++) {
+        uint16_t bin = (memory[c8.PC] << 8) | memory[c8.PC + 1];
+        decode_instruction(bin, &c8);
+    }    
+                
 
-                decode_instruction(bin, &c8);
-          
+            tick_timers(&c8);
 
         updateScreen(renderer);//updating screen
+
+         uint32_t frameTime = SDL_GetTicks() - lastCycle;
+              if (frameTime < 16) {
+        SDL_Delay(16 - frameTime);
+               }
+              lastCycle = SDL_GetTicks();
       
       }
       SDL_DestroyRenderer(renderer);
