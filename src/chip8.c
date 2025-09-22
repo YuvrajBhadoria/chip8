@@ -1,4 +1,4 @@
- #include <SDL3/SDL.h>
+#include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_keycode.h>
@@ -37,48 +37,15 @@ typedef struct {
   SDL_Texture *texture;
 
 } SDL;
-  static const uint8_t chip8_fontset[80] = {
-      0xF0, 0x90, 0x90, 0x90, 0xF0, 0x20, 0x60, 0x20, 0x20, 0x70, 0xF0, 0x10,
-      0xF0, 0x80, 0xF0, 0xF0, 0x10, 0xF0, 0x10, 0xF0, 0x90, 0x90, 0xF0, 0x10,
-      0x10, 0xF0, 0x80, 0xF0, 0x10, 0xF0, 0xF0, 0x80, 0xF0, 0x90, 0xF0, 0xF0,
-      0x10, 0x20, 0x40, 0x40, 0xF0, 0x90, 0xF0, 0x90, 0xF0, 0xF0, 0x90, 0xF0,
-      0x10, 0xF0, 0xF0, 0x90, 0xF0, 0x90, 0x90, 0xE0, 0x90, 0xE0, 0x90, 0xE0,
-      0xF0, 0x80, 0x80, 0x80, 0xF0, 0xE0, 0x90, 0x90, 0x90, 0xE0, 0xF0, 0x80,
-      0xF0, 0x80, 0xF0, 0xF0, 0x80, 0xF0, 0x80, 0x80};
 
-void draw(SDL *sdl, Chip8 *c8) {
-  // Rendering the Color of Background !!
-
-  if (c8->drawflag) {
-    SDL_SetRenderDrawColor(sdl->renderer, 0, 0, 0, 255);
-    SDL_RenderClear(sdl->renderer);
-    uint32_t drawPixel[32][64];
-    memset(drawPixel, 0, sizeof(drawPixel));
-
-    for (int py = 0; py < 32; ++py) {
-
-      for (int px = 0; px < 64; ++px) {
-
-        if (c8->display[py][px] == 1) {
-
-          drawPixel[py][px] = 0xFFFFFFFFu;
-        }
-      }
-    }
-
-    SDL_UpdateTexture(sdl->texture, NULL, drawPixel, 64 * sizeof(uint32_t));
-
-    SDL_FRect position;
-    position.x = 0;
-    position.y = 0;
-    position.w = 64;
-    position.h = 32;
-    SDL_RenderTexture(sdl->renderer, sdl->texture, NULL, &position);
-    SDL_RenderPresent(sdl->renderer);
-  }
-  c8->drawflag = false;
-}
-
+static const uint8_t chip8_fontset[80] = {
+    0xF0, 0x90, 0x90, 0x90, 0xF0, 0x20, 0x60, 0x20, 0x20, 0x70, 0xF0, 0x10,
+    0xF0, 0x80, 0xF0, 0xF0, 0x10, 0xF0, 0x10, 0xF0, 0x90, 0x90, 0xF0, 0x10,
+    0x10, 0xF0, 0x80, 0xF0, 0x10, 0xF0, 0xF0, 0x80, 0xF0, 0x90, 0xF0, 0xF0,
+    0x10, 0x20, 0x40, 0x40, 0xF0, 0x90, 0xF0, 0x90, 0xF0, 0xF0, 0x90, 0xF0,
+    0x10, 0xF0, 0xF0, 0x90, 0xF0, 0x90, 0x90, 0xE0, 0x90, 0xE0, 0x90, 0xE0,
+    0xF0, 0x80, 0x80, 0x80, 0xF0, 0xE0, 0x90, 0x90, 0x90, 0xE0, 0xF0, 0x80,
+    0xF0, 0x80, 0xF0, 0xF0, 0x80, 0xF0, 0x80, 0x80};
 
 void execute(Chip8 *c8) {
   uint8_t X, Y, kk, n;
@@ -201,7 +168,7 @@ void execute(Chip8 *c8) {
 
   case 0xA000: /* ANNN: I = NNN */
     c8->I = nnn;
-     printf("FX29 %d" , c8->I);
+    printf("FX29 %d", c8->I);
     break;
 
   case 0xB000: /* BNNN: jump to NNN + V0 */
@@ -283,7 +250,7 @@ void execute(Chip8 *c8) {
     case 0x1E: /* FX1E: I += VX */
       c8->I = c8->I + c8->V[X];
       break;
-    case 0x29:              
+    case 0x29:
       /* FX29: I = location of sprite for digit VX */
       c8->I = c8->V[X] * 5; /* each font is 5 bytes */
       break;
@@ -315,8 +282,40 @@ void execute(Chip8 *c8) {
   } /* switch(opcode & 0xF000) Finishes*/
 }
 
-  //Key input handling function
-  void handle_key_event(SDL_Event *ev, Chip8 *c8, int32_t *delay) {
+void draw(SDL *sdl, Chip8 *c8) {
+  // Rendering the Color of Background !!
+
+  if (c8->drawflag) {
+    SDL_SetRenderDrawColor(sdl->renderer, 0, 0, 0, 255);
+    SDL_RenderClear(sdl->renderer);
+    uint32_t drawPixel[32][64];
+    memset(drawPixel, 0, sizeof(drawPixel));
+
+    for (int py = 0; py < 32; ++py) {
+
+      for (int px = 0; px < 64; ++px) {
+
+        if (c8->display[py][px] == 1) {
+
+          drawPixel[py][px] = 0xFFFFFFFFu;
+        }
+      }
+    }
+
+    SDL_UpdateTexture(sdl->texture, NULL, drawPixel, 64 * sizeof(uint32_t));
+
+    SDL_FRect position;
+    position.x = 0;
+    position.y = 0;
+    position.w = 64;
+    position.h = 32;
+    SDL_RenderTexture(sdl->renderer, sdl->texture, NULL, &position);
+    SDL_RenderPresent(sdl->renderer);
+  }
+  c8->drawflag = false;
+}
+
+void handle_key_event(SDL_Event *ev, Chip8 *c8, int32_t *delay) {
 
   if (ev->type == SDL_EVENT_KEY_DOWN) {
 
@@ -433,46 +432,48 @@ void execute(Chip8 *c8) {
     }
   }
 }
+bool loadrom(Chip8 *c8, const char *rompath) {
+  FILE *fp = fopen(rompath, "rb");
 
-  int main() {
+  if (fp == NULL) {
+    fprintf(stderr, "Can't open the ROM file: %s\n", "CUBE8.ch8");
+    return 0;
+  }
 
-    SDL sdl = {NULL};
-    Chip8 c8 = {}; 
+  fseek(fp, 0, SEEK_END);
+  long size = ftell(fp);
+  if (size <= 0 || size > (4096 - 0x200)) {
+    fprintf(stderr, "Invalid ROM size: %ld bytes\n", size);
+    fclose(fp);
+    return 0;
+  }
+  fseek(fp, 0, SEEK_SET);
 
-    //copying fontset in main memory
-    memcpy(c8.memory, chip8_fontset, sizeof(chip8_fontset));
+  /* Read raw bytes into memory at 0x200 */
+  size_t read = fread(c8->memory + 0x200, 1, (size_t)size, fp);
+  if (read != (size_t)size) {
+    fprintf(stderr, "Failed to read ROM: read %zu of %ld\n", read, size);
+    fclose(fp);
+  }
 
+  return true;
+}
 
+int main(int argc, char **argv) {
 
-    int scale = 20; // To Scale the window 20 times the chip8 resolution
-    c8.PC = 0x200;
+  SDL sdl = {NULL};
+  Chip8 c8 = {};
 
-    // ROM is loaded
-  FILE *fp = fopen("INVADER", "rb");
+  // copying fontset in main memory
+  memcpy(c8.memory, chip8_fontset, sizeof(chip8_fontset));
 
-    if (fp == NULL) {
-      fprintf(stderr, "Can't open the ROM file: %s\n", "CUBE8.ch8");
-      return 0;
-    }
+  // loading Rom
+  if (!loadrom(&c8, argv[1])) {
 
-    fseek(fp, 0, SEEK_END);
-    long size = ftell(fp);
-    if (size <= 0 || size > (4096 - 0x200)) {
-      fprintf(stderr, "Invalid ROM size: %ld bytes\n", size);
-      fclose(fp);
-      return 0;
-    }
-    fseek(fp, 0, SEEK_SET);
+    return EXIT_FAILURE;
+  }
 
-    /* Read raw bytes into memory at 0x200 */
-    size_t read = fread(c8.memory + 0x200, 1, (size_t)size, fp);
-    if (read != (size_t)size) {
-      fprintf(stderr, "Failed to read ROM: read %zu of %ld\n", read, size);
-      fclose(fp);}
-    
-    }
-
-     int scale = 10; // To Scale window according to the user
+  int scale = 10; // To Scale window according to the user
   c8.PC = 0x200;
   SDL_Init(SDL_INIT_VIDEO);
 
@@ -505,6 +506,8 @@ void execute(Chip8 *c8) {
     SDL_Quit();
   }
 
+  // ROM is loaded
+
   int delay = 1;
   bool isRunning = true;
 
@@ -533,6 +536,5 @@ void execute(Chip8 *c8) {
     draw(&sdl, &c8);
   }
 
-    return 0;
-      
-  }
+  return 0;
+}
