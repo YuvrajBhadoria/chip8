@@ -1,4 +1,5 @@
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_audio.h>
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_keycode.h>
@@ -7,27 +8,26 @@
 #include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_video.h>
-#include <bits/types/stack_t.h>
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
+
 typedef struct {
-  uint8_t memory[4096];
+  uint8_t Memory[4096];
   uint8_t V[16];
-  uint16_t PC;
-  uint16_t I;
-  bool drawflag;
-  uint16_t stack[16];
-  uint16_t sp;
-  uint16_t keyboard[16];
-  uint8_t soundTimer;
-  uint8_t delayTimer;
-  uint16_t opcode;
-  uint8_t display[32][64];
+  uint16_t ProgramCounter;
+  uint16_t IndexRegister;
+  bool DrawFlag;
+  uint16_t Stack[16];
+  uint16_t StackPointer;
+  uint16_t Keyboard[16];
+  uint8_t SoundTimer;
+  uint8_t DelayTimer;
+  uint16_t OPCode;
+  uint8_t Display[32][64];
 } Chip8;
 
 typedef struct {
@@ -47,148 +47,147 @@ static const uint8_t chip8_fontset[80] = {
     0xF0, 0x80, 0x80, 0x80, 0xF0, 0xE0, 0x90, 0x90, 0x90, 0xE0, 0xF0, 0x80,
     0xF0, 0x80, 0xF0, 0xF0, 0x80, 0xF0, 0x80, 0x80};
 
-void execute(Chip8 *c8) {
+void execute(Chip8 *chip8) {
   uint8_t X, Y, kk, n;
   uint16_t nnn;
   uint32_t i, key_pressed;
 
   /* fetch opcode (two bytes) */
-  c8->opcode = (uint16_t)c8->memory[c8->PC] << 8 | c8->memory[c8->PC + 1];
-  c8->PC += 2;
-  X = (c8->opcode & 0x0F00) >> 8;
-  Y = (c8->opcode & 0x00F0) >> 4;
-  nnn = (c8->opcode & 0x0FFF);
-  kk = (c8->opcode & 0x00FF);
-  n = (c8->opcode & 0x000F);
+  chip8->OPCode = (uint16_t)chip8->Memory[chip8->ProgramCounter] << 8 |
+                  chip8->Memory[chip8->ProgramCounter + 1];
+  chip8->ProgramCounter += 2;
+  X = (chip8->OPCode & 0x0F00) >> 8;
+  Y = (chip8->OPCode & 0x00F0) >> 4;
+  nnn = (chip8->OPCode & 0x0FFF);
+  kk = (chip8->OPCode & 0x00FF);
+  n = (chip8->OPCode & 0x000F);
 
   // printf("Opcode: %04x  PC: %04x  I: %04x\n", c8->opcode, c8->PC, c8->I);
 
-  switch (c8->opcode & 0xF000) {
+  switch (chip8->OPCode & 0xF000) {
   case 0x0000:
-    switch (c8->opcode & 0x00FF) {
+    switch (chip8->OPCode & 0x00FF) {
     case 0x00E0: /* 00E0: clear screen */
-      memset(c8->display, 0, sizeof(c8->display));
-      c8->drawflag = true;
+      memset(chip8->Display, 0, sizeof(chip8->Display));
+      chip8->DrawFlag = true;
       break;
 
     case 0x00EE: /* 00EE: return from subroutine */
-      if (c8->sp == 0) {
-        fprintf(stderr, "Stack underflow on 00EE\n");
-      } else {
-        --c8->sp;
-        c8->PC = c8->stack[c8->sp];
-      }
+
+      --chip8->StackPointer;
+      chip8->ProgramCounter = chip8->Stack[chip8->StackPointer];
+
       break;
 
     default:
-      printf("Unknown 0x0 opcode: %04x\n", c8->opcode);
+      printf("Unknown 0x0 opcode: %04x\n", chip8->OPCode);
       break;
     }
     break;
 
   case 0x1000: /* 1NNN: jump to address NNN */
-    c8->PC = nnn;
+    chip8->ProgramCounter = nnn;
     break;
 
   case 0x2000: /* 2NNN: call subroutine at NNN */
-    c8->stack[c8->sp] = c8->PC;
-    ++c8->sp;
-    c8->PC = nnn;
+    chip8->Stack[chip8->StackPointer] = chip8->ProgramCounter;
+    ++chip8->StackPointer;
+    chip8->ProgramCounter = nnn;
     break;
 
   case 0x3000: /* 3XKK: skip next if VX == KK */
-    if (c8->V[X] == kk)
-      c8->PC += 2;
+    if (chip8->V[X] == kk)
+      chip8->ProgramCounter += 2;
     break;
 
   case 0x4000: /* 4XKK: skip next if VX != KK */
-    if (c8->V[X] != kk)
-      c8->PC += 2;
+    if (chip8->V[X] != kk)
+      chip8->ProgramCounter += 2;
     break;
 
   case 0x5000: /* 5XY0: skip next if VX == VY */
-    if (c8->V[X] == c8->V[Y])
-      c8->PC += 2;
+    if (chip8->V[X] == chip8->V[Y])
+      chip8->ProgramCounter += 2;
 
     break;
 
   case 0x6000: /* 6XKK: VX = KK */
-    c8->V[X] = kk;
+    chip8->V[X] = kk;
     break;
 
   case 0x7000: /* 7XKK: VX += KK */
-    c8->V[X] += kk;
+    chip8->V[X] += kk;
     break;
 
   case 0x8000: /* 8XYN: arithmetic/bit ops */
     switch (n) {
     case 0x0:
-      c8->V[X] = c8->V[Y];
+      chip8->V[X] = chip8->V[Y];
       break;
     case 0x1:
-      c8->V[X] |= c8->V[Y];
+      chip8->V[X] |= chip8->V[Y];
       break;
     case 0x2:
-      c8->V[X] &= c8->V[Y];
+      chip8->V[X] &= chip8->V[Y];
       break;
     case 0x3:
-      c8->V[X] ^= c8->V[Y];
+      chip8->V[X] ^= chip8->V[Y];
       break;
     case 0x4: {
-      uint16_t sum = (uint16_t)c8->V[X] + (uint16_t)c8->V[Y];
-      c8->V[0xF] = (sum > 0xFF) ? 1 : 0;
-      c8->V[X] = (uint8_t)(sum & 0xFF);
+      chip8->V[0xF] = ((chip8->V[X] + chip8->V[Y]) > 255) ? 1 : 0;
+      chip8->V[X] = chip8->V[X] + chip8->V[Y];
+
     } break;
     case 0x5:
-      c8->V[0xF] = (c8->V[X] > c8->V[Y]) ? 1 : 0;
-      c8->V[X] = c8->V[X] - c8->V[Y];
+      chip8->V[0xF] = (chip8->V[X] > chip8->V[Y]) ? 1 : 0;
+      chip8->V[X] = chip8->V[X] - chip8->V[Y];
       break;
     case 0x6:
-      c8->V[0xF] = c8->V[X] & 1;
-      c8->V[X] >>= 1;
+      chip8->V[0xF] = (chip8->V[X] & 1) == 1 ? 1 : 0;
+      chip8->V[X] >>= 1;
       break;
     case 0x7:
-      c8->V[0xF] = (c8->V[Y] > c8->V[X]) ? 1 : 0;
-      c8->V[X] = c8->V[Y] - c8->V[X];
+      chip8->V[0xF] = (chip8->V[Y] > chip8->V[X]) ? 1 : 0;
+      chip8->V[X] = chip8->V[Y] - chip8->V[X];
       break;
     case 0xE:
-      c8->V[0xF] = c8->V[X] >> 7;
-      c8->V[X] <<= 1;
+      chip8->V[0xF] = (chip8->V[X] >> 7) == 0b10000000 ? 1 : 0;
+      chip8->V[X] <<= 1;
       break;
     default:
-      printf("Unknown 8XYN opcode: %04x\n", c8->opcode);
+      printf("Unknown 8XYN opcode: %04x\n", chip8->OPCode);
       break;
     }
     break;
 
   case 0x9000: /* 9XY0: skip if VX != VY */
-    if (c8->V[X] != c8->V[Y])
-      c8->PC += 2;
+    if (chip8->V[X] != chip8->V[Y])
+      chip8->ProgramCounter += 2;
     break;
 
   case 0xA000: /* ANNN: I = NNN */
-    c8->I = nnn;
-    printf("FX29 %d", c8->I);
+    chip8->IndexRegister = nnn;
+
     break;
 
   case 0xB000: /* BNNN: jump to NNN + V0 */
-    c8->PC = nnn + c8->V[0x0];
+    chip8->ProgramCounter = nnn + chip8->V[0x0];
     break;
 
   case 0xC000: /* CXKK: VX = random & KK */
-    c8->V[X] = (rand() % 256) & kk;
+    chip8->V[X] = (rand() % 256) & kk;
     break;
 
   case 0xD000: { /* DXYN: draw sprite at (VX, VY), height N */
-    uint16_t px = c8->V[X];
-    uint16_t py = c8->V[Y];
+    uint16_t px = chip8->V[X];
+    uint16_t py = chip8->V[Y];
     uint16_t numberOfSprites = n;
     uint8_t spriteByte;
-    c8->V[0xF] = 0;
+    chip8->V[0xF] = 0;
 
     for (uint16_t spriteNumber = 0; spriteNumber < numberOfSprites;
          ++spriteNumber) {
-      spriteByte = c8->memory[c8->I + spriteNumber];
+      spriteByte = chip8->Memory[chip8->IndexRegister + spriteNumber];
       for (uint8_t bitNumberInSprite = 0; bitNumberInSprite < 8;
            ++bitNumberInSprite) {
 
@@ -198,28 +197,28 @@ void execute(Chip8 *c8) {
           uint16_t X = (px + bitNumberInSprite) % 64;
           uint16_t Y = (py + spriteNumber) % 32;
 
-          if (c8->display[Y][X] == 1) {
-            c8->V[0xF] = 1;
+          if (chip8->Display[Y][X] == 1) {
+            chip8->V[0xF] = 1;
           }
-          c8->display[Y][X] ^= 1;
+          chip8->Display[Y][X] ^= 1;
         }
       }
     }
-    c8->drawflag = true;
+    chip8->DrawFlag = true;
   } break;
 
   case 0xE000:
     switch (kk) {
     case 0x9E:
-      if (c8->keyboard[c8->V[X]] != 0)
-        c8->PC += 2;
+      if (chip8->Keyboard[chip8->V[X]] != 0)
+        chip8->ProgramCounter += 2;
       break;
     case 0xA1:
-      if (c8->keyboard[c8->V[X]] == 0)
-        c8->PC += 2;
+      if (chip8->Keyboard[chip8->V[X]] == 0)
+        chip8->ProgramCounter += 2;
       break;
     default:
-      printf("Unknown E opcode: %04x\n", c8->opcode);
+      printf("Unknown E opcode: %04x\n", chip8->OPCode);
       break;
     }
     break;
@@ -227,83 +226,86 @@ void execute(Chip8 *c8) {
   case 0xF000:
     switch (kk) {
     case 0x07: /* FX07: VX = delay_timer */
-      c8->V[X] = c8->delayTimer;
+      chip8->V[X] = chip8->DelayTimer;
       break;
     case 0x0A: { /* FX0A: wait for a key press, store in VX */
       key_pressed = 0;
       for (i = 0; i < 16; ++i) {
-        if (c8->keyboard[i]) {
+        if (chip8->Keyboard[i]) {
           key_pressed = 1;
-          c8->V[X] = (uint8_t)i;
+          chip8->V[X] = (uint8_t)i;
         }
       }
       if (key_pressed == 0) {
-        c8->PC -= 2; /* repeat this instruction until key pressed */
+        chip8->ProgramCounter -=
+            2; /* repeat this instruction until key pressed */
       }
     } break;
-    case 0x15: /* FX15: delay_timer = VX */
-      c8->delayTimer = c8->V[X];
+    case 0x15: // FX15: delay_timer = VX
+      chip8->DelayTimer = chip8->V[X];
+
+      /// askdmaksdm
       break;
     case 0x18: /* FX18: sound_timer = VX */
-      c8->soundTimer = c8->V[X];
+      chip8->SoundTimer = chip8->V[X];
       break;
     case 0x1E: /* FX1E: I += VX */
-      c8->I = c8->I + c8->V[X];
+      chip8->IndexRegister = chip8->IndexRegister + chip8->V[X];
       break;
     case 0x29:
       /* FX29: I = location of sprite for digit VX */
-      c8->I = c8->V[X] * 5; /* each font is 5 bytes */
+      chip8->IndexRegister = chip8->V[X] * 5; /* each font is 5 bytes */
       break;
     case 0x33: { /* FX33: store BCD of VX at I, I+1, I+2 */
-      int vX = c8->V[X];
-      c8->memory[c8->I] = (vX / 100) % 10;
-      c8->memory[c8->I + 1] = (vX / 10) % 10;
-      c8->memory[c8->I + 2] = vX % 10;
+      int vX = chip8->V[X];
+      chip8->Memory[chip8->IndexRegister] = (vX / 100) % 10;
+      chip8->Memory[chip8->IndexRegister + 1] = (vX / 10) % 10;
+      chip8->Memory[chip8->IndexRegister + 2] = vX % 10;
     } break;
     case 0x55: /* FX55: store V0..VX in memory starting at I */
       for (uint8_t i = 0; i <= X; ++i) {
-        c8->memory[c8->I + i] = c8->V[i];
+        chip8->Memory[chip8->IndexRegister + i] = chip8->V[i];
       }
       break;
     case 0x65: /* FX65: read V0..VX from memory starting at I */
       for (uint8_t i = 0; i <= X; ++i) {
-        c8->V[i] = c8->memory[c8->I + i];
+        chip8->V[i] = chip8->Memory[chip8->IndexRegister + i];
       }
       break;
     default:
-      printf("Unknown F opcode: %04x\n", c8->opcode);
+      printf("Unknown F opcode: %04x\n", chip8->OPCode);
       break;
     }
     break;
 
   default:
-    printf("Unknown opcode: %04x\n", c8->opcode);
+    printf("Unknown opcode: %04x\n", chip8->OPCode);
     break;
   } /* switch(opcode & 0xF000) Finishes*/
 }
 
-void draw(SDL *sdl, Chip8 *c8) {
-  // Rendering the Color of Background !!
-
-  if (c8->drawflag) {
+void draw(SDL *sdl,
+          Chip8 *c8) { // draw function to store where the pixels will be on
+  // rendering the color of background
+  if (c8->DrawFlag) {
     SDL_SetRenderDrawColor(sdl->renderer, 0, 0, 0, 255);
     SDL_RenderClear(sdl->renderer);
     uint32_t drawPixel[32][64];
-    memset(drawPixel, 0, sizeof(drawPixel));
-
+    memset(drawPixel, 0,
+           sizeof(drawPixel)); // setting the drawpixel to zero (i.e. turning
+                               // off all the pixels)
     for (int py = 0; py < 32; ++py) {
 
       for (int px = 0; px < 64; ++px) {
 
-        if (c8->display[py][px] == 1) {
+        if (c8->Display[py][px] == 1) { // checking if display has any pixels on
 
-          drawPixel[py][px] = 0xFFFFFFFFu;
+          drawPixel[py][px] =
+              0xFFFFFFFFu; // pixels getting on the location they should be
         }
       }
     }
-
     SDL_UpdateTexture(sdl->texture, NULL, drawPixel, 64 * sizeof(uint32_t));
-
     SDL_FRect position;
     position.x = 0;
     position.y = 0;
@@ -312,7 +314,7 @@ void draw(SDL *sdl, Chip8 *c8) {
     SDL_RenderTexture(sdl->renderer, sdl->texture, NULL, &position);
     SDL_RenderPresent(sdl->renderer);
   }
-  c8->drawflag = false;
+  c8->DrawFlag = false;
 }
 
 void handle_key_event(SDL_Event *ev, Chip8 *c8, int32_t *delay) {
@@ -328,52 +330,52 @@ void handle_key_event(SDL_Event *ev, Chip8 *c8, int32_t *delay) {
       *delay -= 1;
       break;
     case SDLK_1:
-      c8->keyboard[1] = 1;
+      c8->Keyboard[1] = 1;
       break;
     case SDLK_2:
-      c8->keyboard[2] = 1;
+      c8->Keyboard[2] = 1;
       break;
     case SDLK_3:
-      c8->keyboard[3] = 1;
+      c8->Keyboard[3] = 1;
       break;
     case SDLK_Q:
-      c8->keyboard[4] = 1;
+      c8->Keyboard[4] = 1;
       break;
     case SDLK_W:
-      c8->keyboard[5] = 1;
+      c8->Keyboard[5] = 1;
       break;
     case SDLK_E:
-      c8->keyboard[6] = 1;
+      c8->Keyboard[6] = 1;
       break;
     case SDLK_X:
-      c8->keyboard[0] = 1;
+      c8->Keyboard[0] = 1;
       break;
     case SDLK_A:
-      c8->keyboard[7] = 1;
+      c8->Keyboard[7] = 1;
       break;
     case SDLK_S:
-      c8->keyboard[8] = 1;
+      c8->Keyboard[8] = 1;
       break;
     case SDLK_D:
-      c8->keyboard[9] = 1;
+      c8->Keyboard[9] = 1;
       break;
     case SDLK_Z:
-      c8->keyboard[0xA] = 1;
+      c8->Keyboard[0xA] = 1;
       break;
     case SDLK_C:
-      c8->keyboard[0xB] = 1;
+      c8->Keyboard[0xB] = 1;
       break;
     case SDLK_4:
-      c8->keyboard[0xC] = 1;
+      c8->Keyboard[0xC] = 1;
       break;
     case SDLK_R:
-      c8->keyboard[0xD] = 1;
+      c8->Keyboard[0xD] = 1;
       break;
     case SDLK_F:
-      c8->keyboard[0xE] = 1;
+      c8->Keyboard[0xE] = 1;
       break;
     case SDLK_V:
-      c8->keyboard[0xF] = 1;
+      c8->Keyboard[0xF] = 1;
       break;
     }
 
@@ -382,52 +384,52 @@ void handle_key_event(SDL_Event *ev, Chip8 *c8, int32_t *delay) {
   else if (ev->type == SDL_EVENT_KEY_UP) {
     switch (ev->key.key) {
     case SDLK_X:
-      c8->keyboard[0] = 0;
+      c8->Keyboard[0] = 0;
       break;
     case SDLK_1:
-      c8->keyboard[1] = 0;
+      c8->Keyboard[1] = 0;
       break;
     case SDLK_2:
-      c8->keyboard[2] = 0;
+      c8->Keyboard[2] = 0;
       break;
     case SDLK_3:
-      c8->keyboard[3] = 0;
+      c8->Keyboard[3] = 0;
       break;
     case SDLK_Q:
-      c8->keyboard[4] = 0;
+      c8->Keyboard[4] = 0;
       break;
     case SDLK_W:
-      c8->keyboard[5] = 0;
+      c8->Keyboard[5] = 0;
       break;
     case SDLK_E:
-      c8->keyboard[6] = 0;
+      c8->Keyboard[6] = 0;
       break;
     case SDLK_A:
-      c8->keyboard[7] = 0;
+      c8->Keyboard[7] = 0;
       break;
     case SDLK_S:
-      c8->keyboard[8] = 0;
+      c8->Keyboard[8] = 0;
       break;
     case SDLK_D:
-      c8->keyboard[9] = 0;
+      c8->Keyboard[9] = 0;
       break;
     case SDLK_Z:
-      c8->keyboard[0xA] = 0;
+      c8->Keyboard[0xA] = 0;
       break;
     case SDLK_C:
-      c8->keyboard[0xB] = 0;
+      c8->Keyboard[0xB] = 0;
       break;
     case SDLK_4:
-      c8->keyboard[0xC] = 0;
+      c8->Keyboard[0xC] = 0;
       break;
     case SDLK_R:
-      c8->keyboard[0xD] = 0;
+      c8->Keyboard[0xD] = 0;
       break;
     case SDLK_F:
-      c8->keyboard[0xE] = 0;
+      c8->Keyboard[0xE] = 0;
       break;
     case SDLK_V:
-      c8->keyboard[0xF] = 0;
+      c8->Keyboard[0xF] = 0;
       break;
     }
   }
@@ -450,7 +452,7 @@ bool loadrom(Chip8 *c8, const char *rompath) {
   fseek(fp, 0, SEEK_SET);
 
   /* Read raw bytes into memory at 0x200 */
-  size_t read = fread(c8->memory + 0x200, 1, (size_t)size, fp);
+  size_t read = fread(c8->Memory + 0x200, 1, (size_t)size, fp);
   if (read != (size_t)size) {
     fprintf(stderr, "Failed to read ROM: read %zu of %ld\n", read, size);
     fclose(fp);
@@ -459,13 +461,95 @@ bool loadrom(Chip8 *c8, const char *rompath) {
   return true;
 }
 
+
+
+typedef struct {
+    SDL_AudioStream *stream;
+    int SampleRate;
+    int Freq;
+    int16_t Amplitude;
+    double Phase;
+    bool Playing;
+} SoundState;
+
+bool initSound(SoundState *s, int sample_rate, int freq, int16_t amplitude) {  
+    SDL_AudioSpec spec = { SDL_AUDIO_S16, 1, sample_rate };
+    
+    s->SampleRate = sample_rate;
+    s->Freq = freq;
+    s->Amplitude = amplitude;
+    s->Phase = 0.0;
+    s->Playing = false;
+
+    s->stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
+    if (!s->stream) {
+        fprintf(stderr, "Failed to open audio stream: %s\n", SDL_GetError());
+        return false;
+    }
+    SDL_ResumeAudioStreamDevice(s->stream); //resuming the audio
+    return true;
+}
+
+
+void generateSquareWave(SoundState *s, int16_t *buffer, int n_samples) { //genrating a square wave
+    double samples_per_cycle = (double)s->SampleRate / (double)s->Freq;
+    double half_cycle = samples_per_cycle / 2.0;
+    for (int i = 0; i < n_samples; ++i) {
+        buffer[i] = (s->Phase < half_cycle) ? s->Amplitude : -s->Amplitude;
+        s->Phase += 1.0;
+        if (s->Phase >= samples_per_cycle) {
+            s->Phase -= samples_per_cycle;
+        }
+    }
+}
+
+
+void audioUpdate(SoundState *s, bool sound_active) {
+    const int BUFFER_SAMPLES = 2048;
+    static int16_t buffer[BUFFER_SAMPLES]; // static so that we can resume
+
+    if (sound_active) {
+        if (!s->Playing) {
+           
+            SDL_FlushAudioStream(s->stream);
+            s->Playing = true;
+
+        }
+        
+        generateSquareWave(s, buffer, BUFFER_SAMPLES);
+
+        int bytes = BUFFER_SAMPLES * sizeof(int16_t); 
+
+        SDL_PutAudioStreamData(s->stream, buffer, bytes);
+
+    } else {
+        if (s->Playing) {
+         
+            SDL_FlushAudioStream(s->stream);
+            s->Playing = false;
+            s->Phase = 0.0; // reset waveform phase
+        }
+    }
+}
+
+void shutdownSound(SoundState *s) {
+    if (s->stream) {
+        SDL_DestroyAudioStream(s->stream);
+        s->stream = NULL;
+    }
+}
+
+
+
+
+
 int main(int argc, char **argv) {
 
   SDL sdl = {NULL};
   Chip8 c8 = {};
 
   // copying fontset in main memory
-  memcpy(c8.memory, chip8_fontset, sizeof(chip8_fontset));
+  memcpy(c8.Memory, chip8_fontset, sizeof(chip8_fontset));
 
   // loading Rom
   if (!loadrom(&c8, argv[1])) {
@@ -474,8 +558,13 @@ int main(int argc, char **argv) {
   }
 
   int scale = 10; // To Scale window according to the user
-  c8.PC = 0x200;
-  SDL_Init(SDL_INIT_VIDEO);
+  c8.ProgramCounter = 0x200;
+  SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
+  
+  SoundState sound = {0};
+  if (!initSound(&sound, 44100, 440, 16000)) {
+    fprintf(stderr, "Warning: audio init failed\n");
+  }
 
   sdl.window = SDL_CreateWindow("Chip8-SDL3", 64 * scale, 32 * scale, 0);
   if (!sdl.window) {
@@ -526,8 +615,14 @@ int main(int argc, char **argv) {
     if (delay < 0)
       delay = 0;
     SDL_Delay((uint32_t)delay);
-    if (c8.delayTimer > 0)
-      --c8.delayTimer;
+
+    if (c8.DelayTimer > 0) {
+      --c8.DelayTimer;
+    }
+    if (c8.SoundTimer > 0) {
+      --c8.SoundTimer;
+    }
+    audioUpdate(&sound, c8.SoundTimer > 0);
 
     // Executing opcodes
     execute(&c8);
@@ -535,6 +630,8 @@ int main(int argc, char **argv) {
     // drawing pixels
     draw(&sdl, &c8);
   }
+  shutdownSound(&sound);
+  SDL_Quit();
 
   return 0;
 }
