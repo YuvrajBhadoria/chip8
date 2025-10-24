@@ -1,3 +1,6 @@
+#define BUFFER_SAMPLES 2048
+#define FRAME_RATE 60 
+
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_audio.h>
 #include <SDL3/SDL_error.h>
@@ -16,8 +19,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-typedef struct { // all the chip8 things we need for eg. ram , display ,
-                 // registers , stack etc..
+typedef struct { 
   uint8_t Memory[4096];
   uint8_t V[16];
   uint16_t ProgramCounter;
@@ -32,25 +34,23 @@ typedef struct { // all the chip8 things we need for eg. ram , display ,
   uint8_t Display[32][64];
 } Chip8;
 
-typedef struct { // Used for display purpose
-
-  SDL_Window *window;
-  SDL_Renderer *renderer;
-  SDL_Texture *texture;
-
+typedef struct { 
+  SDL_Window *Window;
+  SDL_Renderer *Renderer;
+  SDL_Texture *Texture;
 } SDL;
 
-//========================Default fontset of chip8===============
-static const uint8_t chip8_fontset[80] = {
+
+static const uint8_t chip8Fontset[80] = {
     0xF0, 0x90, 0x90, 0x90, 0xF0, 0x20, 0x60, 0x20, 0x20, 0x70, 0xF0, 0x10,
     0xF0, 0x80, 0xF0, 0xF0, 0x10, 0xF0, 0x10, 0xF0, 0x90, 0x90, 0xF0, 0x10,
     0x10, 0xF0, 0x80, 0xF0, 0x10, 0xF0, 0xF0, 0x80, 0xF0, 0x90, 0xF0, 0xF0,
     0x10, 0x20, 0x40, 0x40, 0xF0, 0x90, 0xF0, 0x90, 0xF0, 0xF0, 0x90, 0xF0,
     0x10, 0xF0, 0xF0, 0x90, 0xF0, 0x90, 0x90, 0xE0, 0x90, 0xE0, 0x90, 0xE0,
     0xF0, 0x80, 0x80, 0x80, 0xF0, 0xE0, 0x90, 0x90, 0x90, 0xE0, 0xF0, 0x80,
-    0xF0, 0x80, 0xF0, 0xF0, 0x80, 0xF0, 0x80, 0x80};
+    0xF0, 0x80, 0xF0, 0xF0, 0x80, 0xF0, 0x80, 0x80
+  };
 
-// =======================Loading ROM in Memory[]================
 
 bool loadrom(Chip8 *c8, const char *rompath) {
   FILE *fp = fopen(rompath, "rb");
@@ -71,7 +71,7 @@ bool loadrom(Chip8 *c8, const char *rompath) {
 
   fseek(fp, 0, SEEK_SET);
 
-  /* Read raw bytes into memory at 0x200 */
+ //0x200 is the offset of the program
   size_t read = fread(c8->Memory + 0x200, 1, (size_t)size, fp);
   if (read != (size_t)size) {
     fprintf(stderr, "Failed to read ROM: read %zu of %ld\n", read, size);
@@ -81,11 +81,6 @@ bool loadrom(Chip8 *c8, const char *rompath) {
   return true;
 }
 
-// =======================Rom is Loaded================
-
-// =======================Sound Starts================
-
-// Defining a struct for Audio
 typedef struct {
   SDL_AudioStream *stream;
   int SampleRate;
@@ -97,7 +92,6 @@ typedef struct {
 
 bool initSound(SoundState *s, int sample_rate, int freq, int16_t amplitude) {
 
-  // giving an Audio spec
   SDL_AudioSpec spec;
   SDL_zero(spec);
   spec.freq = sample_rate;
@@ -111,7 +105,6 @@ bool initSound(SoundState *s, int sample_rate, int freq, int16_t amplitude) {
   s->Phase = 0.0;
   s->Playing = false;
 
-  // giving an Audio stream
   s->stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
                                         &spec, NULL, NULL);
   if (!s->stream) {
@@ -119,9 +112,7 @@ bool initSound(SoundState *s, int sample_rate, int freq, int16_t amplitude) {
     return false;
   }
 
-  // resuming the audio
   SDL_ResumeAudioStreamDevice(s->stream);
-
   return true;
 }
 
@@ -134,7 +125,6 @@ void generateSquareWave(SoundState *s, int16_t *buffer, int n_samples) {
   for (int i = 0; i < n_samples; ++i) {
     buffer[i] = (s->Phase < half_cycle) ? s->Amplitude : -s->Amplitude;
 
-    // increaing phase
     s->Phase += 1.0;
     if (s->Phase >= samples_per_cycle) {
       s->Phase -= samples_per_cycle;
@@ -142,22 +132,10 @@ void generateSquareWave(SoundState *s, int16_t *buffer, int n_samples) {
   }
 }
 
-// =======================Sound Ends================
-
-// =======================Checking if key is pressed or not================
-
-void handle_key_event(SDL_Event *ev, Chip8 *c8, int32_t *delay) {
+void handle_key_event(SDL_Event *ev, Chip8 *c8) {
 
   if (ev->type == SDL_EVENT_KEY_DOWN) {
-
     switch (ev->key.key) {
-
-    case SDLK_F3:
-      *delay += 1;
-      break;
-    case SDLK_F2:
-      *delay -= 1;
-      break;
     case SDLK_1:
       c8->Keyboard[1] = 1;
       break;
@@ -207,7 +185,6 @@ void handle_key_event(SDL_Event *ev, Chip8 *c8, int32_t *delay) {
       c8->Keyboard[0xF] = 1;
       break;
     }
-
   }
 
   else if (ev->type == SDL_EVENT_KEY_UP) {
@@ -264,17 +241,14 @@ void handle_key_event(SDL_Event *ev, Chip8 *c8, int32_t *delay) {
   }
 }
 
-// =======================Key Handling is done================
-
 void audioUpdate(SoundState *s, bool sound_active) {
-#define BUFFER_SAMPLES 2048
+
 
   // static so that we can resume
   static int16_t buffer[BUFFER_SAMPLES];
 
   if (sound_active) {
     if (!s->Playing) {
-
       SDL_FlushAudioStream(s->stream);
       s->Playing = true;
     }
@@ -296,19 +270,12 @@ void audioUpdate(SoundState *s, bool sound_active) {
   }
 }
 
-// =======================OP CODES starts================
-
 void execute(Chip8 *chip8) {
-  // helps us to give a specific bit from hex
   uint8_t X, Y, kk, n;
-
-  // helps us to give three bits from a hex (used for addresses)
   uint16_t nnn;
-
-  // checks if key is pressed or not
   uint32_t key_pressed;
 
-  /* fetch opcode (two bytes) */
+  
   chip8->OPCode =
       (uint16_t)chip8->Memory[chip8->ProgramCounter] << 8 |
       chip8
@@ -332,10 +299,8 @@ void execute(Chip8 *chip8) {
       break;
 
     case 0x00EE: /* 00EE: return from subroutine */
-
       --chip8->StackPointer;
       chip8->ProgramCounter = chip8->Stack[chip8->StackPointer];
-
       break;
 
     default:
@@ -367,7 +332,6 @@ void execute(Chip8 *chip8) {
   case 0x5000: /* 5XY0: skip next if VX == VY */
     if (chip8->V[X] == chip8->V[Y])
       chip8->ProgramCounter += 2;
-
     break;
 
   case 0x6000: /* 6XKK: VX = KK */
@@ -426,7 +390,6 @@ void execute(Chip8 *chip8) {
 
   case 0xA000: /* ANNN: I = NNN */
     chip8->IndexRegister = nnn;
-
     break;
 
   case 0xB000: /* BNNN: jump to NNN + V0 */
@@ -448,8 +411,8 @@ void execute(Chip8 *chip8) {
     for (uint16_t spriteNumber = 0; spriteNumber < numberOfSprites;
          spriteNumber++) {
 
-      // incrimenting by one from the first sprite to iterate through every
-      // sprite
+    /*incrimenting by one from the first sprite to iterate through every
+     sprite*/
       spriteByte = chip8->Memory[chip8->IndexRegister + spriteNumber];
       for (uint8_t bitNumberInSprite = 0; bitNumberInSprite < 8;
            bitNumberInSprite++) {
@@ -557,18 +520,14 @@ void execute(Chip8 *chip8) {
   default:
     printf("Unknown opcode: %04x\n", chip8->OPCode);
     break;
-  } /* switch(opcode & 0xF000) Finishes*/
+  }
 }
-
-//========================OP Codes are done==================
-
-// =======================Draw Function Starts================
 
 void draw(SDL *sdl, Chip8 *c8) {
   if (c8->DrawFlag) {
 
-    SDL_SetRenderDrawColor(sdl->renderer, 0, 0, 0, 255);
-    SDL_RenderClear(sdl->renderer);
+    SDL_SetRenderDrawColor(sdl->Renderer, 0, 0, 0, 255);
+    SDL_RenderClear(sdl->Renderer);
 
     uint32_t drawPixel[32][64];
 
@@ -578,16 +537,14 @@ void draw(SDL *sdl, Chip8 *c8) {
     for (int py = 0; py < 32; ++py) {
       for (int px = 0; px < 64; ++px) {
 
-        // checking if display has any pixels on
         if (c8->Display[py][px] == 1) {
-
           // pixels getting on the location they should be
           drawPixel[py][px] = 0xFFFFFFFFu;
         }
       }
     }
 
-    SDL_UpdateTexture(sdl->texture, NULL, drawPixel, 64 * sizeof(uint32_t));
+    SDL_UpdateTexture(sdl->Texture, NULL, drawPixel, 64 * sizeof(uint32_t));
 
     SDL_FRect position;
     position.x = 0;
@@ -595,15 +552,12 @@ void draw(SDL *sdl, Chip8 *c8) {
     position.w = 64;
     position.h = 32;
 
-    SDL_RenderTexture(sdl->renderer, sdl->texture, NULL, &position);
-    SDL_RenderPresent(sdl->renderer);
+    SDL_RenderTexture(sdl->Renderer, sdl->Texture, NULL, &position);
+    SDL_RenderPresent(sdl->Renderer);
   }
   c8->DrawFlag = false;
 }
 
-// =======================Draw function ends================
-
-//=======================shuting down sound=================
 void shutdownSound(SoundState *s) {
   if (s->stream) {
     SDL_DestroyAudioStream(s->stream);
@@ -611,23 +565,27 @@ void shutdownSound(SoundState *s) {
   }
 }
 
-// =======================Main Starts================
+void destroySDL(SDL *sdl, SoundState *sound){
+  shutdownSound(sound);
+  SDL_DestroyRenderer(sdl->Renderer);
+  SDL_DestroyTexture(sdl->Texture);
+  SDL_DestroyWindow(sdl->Window);
+  SDL_Quit();
+}
 
 int main(int argc, char **argv) {
 
   SDL sdl = {NULL};
   Chip8 c8 = {};
 
-  // copying fontset in main memory
   memcpy(c8.Memory, chip8_fontset, sizeof(chip8_fontset));
 
-  // loading Rom
   if (!loadrom(&c8, argv[1])) {
-
     return EXIT_FAILURE;
   }
 
-  int scale = 10; // To Scale window according to the user
+  // To Scale window according to the user
+  int scale = 10; 
   c8.ProgramCounter = 0x200;
 
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
@@ -635,36 +593,31 @@ int main(int argc, char **argv) {
     fprintf(stderr, "SDL_Intit failed: %s\n", SDL_GetError());
   }
 
-  // Creating Window
-  sdl.window = SDL_CreateWindow("Chip8-SDL3", 64 * scale, 32 * scale, 0);
-  if (!sdl.window) {
+  sdl.Window = SDL_CreateWindow("Chip8-SDL3", 64 * scale, 32 * scale, 0);
+  if (!sdl.Window) {
     fprintf(stderr, "Failed to create window: %s\n", SDL_GetError());
 
     SDL_Quit();
   }
 
-  // To prevent resizing window while the program is running
-  if (!SDL_SetWindowResizable(sdl.window, false)) {
+  if (!SDL_SetWindowResizable(sdl.Window, false)) {
     fprintf(stderr, "SDL_SetWindowResizeable failed: %s\n", SDL_GetError());
   }
 
-  // Creating a Renderer
-  sdl.renderer = SDL_CreateRenderer(sdl.window, NULL);
-  if (!sdl.renderer) {
+  sdl.Renderer = SDL_CreateRenderer(sdl.Window, NULL);
+  if (!sdl.Renderer) {
     fprintf(stderr, "Failed to create renderer: %s\n", SDL_GetError());
 
     SDL_Quit();
   }
 
-  // Scaling the window and pixels of chip8
   SDL_SetRenderLogicalPresentation(
-      sdl.renderer, 64, 32,
-      SDL_LOGICAL_PRESENTATION_INTEGER_SCALE); // Scaling the pixels
+      sdl.Renderer, 64, 32,
+      SDL_LOGICAL_PRESENTATION_INTEGER_SCALE); 
 
-  // creating texture for renderer
-  sdl.texture = SDL_CreateTexture(sdl.renderer, SDL_PIXELFORMAT_RGBA8888,
+  sdl.Texture = SDL_CreateTexture(sdl.Renderer, SDL_PIXELFORMAT_RGBA8888,
                                   SDL_TEXTUREACCESS_STREAMING, 64, 32);
-  if (!sdl.texture) {
+  if (!sdl.Texture) {
     fprintf(stderr, "Failed to load texture: %s\n", SDL_GetError());
     SDL_Quit();
   }
@@ -675,7 +628,6 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Warning: audio init failed\n");
   }
 
-  int delay = 1;
   bool isRunning = true;
 
   // The Program Loop
@@ -686,33 +638,41 @@ int main(int argc, char **argv) {
         fprintf(stdout, "Requested close\n");
         isRunning = false;
       } else if (event.type == SDL_EVENT_KEY_DOWN ||
-                 event.type == SDL_EVENT_KEY_UP) {
-        handle_key_event(&event, &c8, &delay);
+        event.type == SDL_EVENT_KEY_UP) {
+          handle_key_event(&event, &c8);
+        }
       }
+      
+    audioUpdate(&sound, c8.SoundTimer > 0);
+    
+    uint64_t firstFrame = SDL_GetTicks();
+
+    uint32_t InstructionPerSecond = 700;
+
+    // Uniformly execute instructions per frame
+    for (int i = 0; i < InstructionPerSecond/FRAME_RATE; i++) {
+      execute(&c8);
     }
 
-    if (delay < 0)
-      delay = 0;
-    SDL_Delay((uint32_t)delay);
+    uint64_t lastFrame = SDL_GetTicks();
 
+    //16.66666.... is the frame duration in ms
+    SDL_Delay(16.66666f - (firstFrame - lastFrame));
+    
+    // drawing pixels
+    draw(&sdl, &c8);
+
+    //Updating Timmers
     if (c8.DelayTimer > 0) {
       --c8.DelayTimer;
     }
     if (c8.SoundTimer > 0) {
       --c8.SoundTimer;
     }
-    audioUpdate(&sound, c8.SoundTimer > 0);
-
-    // Executing opcodes
-    execute(&c8);
-
-    // drawing pixels
-    draw(&sdl, &c8);
   }
 
-  // Closing Everything
-  shutdownSound(&sound);
-  SDL_Quit();
+  //Destroying SDL and Ending the Program
+  destroySDL(&sdl , &sound);
 
   return 0;
 }
