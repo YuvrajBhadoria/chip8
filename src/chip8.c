@@ -578,7 +578,7 @@ int main(int argc, char **argv) {
   SDL sdl = {NULL};
   Chip8 c8 = {};
 
-  memcpy(c8.Memory, chip8_fontset, sizeof(chip8_fontset));
+  memcpy(c8.Memory, chip8Fontset, sizeof(chip8Fontset));
 
   if (!loadrom(&c8, argv[1])) {
     return EXIT_FAILURE;
