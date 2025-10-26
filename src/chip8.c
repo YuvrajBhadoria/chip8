@@ -90,16 +90,16 @@ typedef struct {
   bool Playing;
 } SoundState;
 
-bool initSound(SoundState *s, int sample_rate, int freq, int16_t amplitude) {
+bool initSound(SoundState *s, int sampleRate, int freq, int16_t amplitude) {
 
   SDL_AudioSpec spec;
   SDL_zero(spec);
-  spec.freq = sample_rate;
+  spec.freq = sampleRate;
   spec.channels = 1;
   spec.format = SDL_AUDIO_S16;
 
   // Initializing struct SoundState
-  s->SampleRate = sample_rate;
+  s->SampleRate = sampleRate;
   s->Freq = freq;
   s->Amplitude = amplitude;
   s->Phase = 0.0;
@@ -117,17 +117,17 @@ bool initSound(SoundState *s, int sample_rate, int freq, int16_t amplitude) {
 }
 
 // Generating Square Waves for a Beep sound
-void generateSquareWave(SoundState *s, int16_t *buffer, int n_samples) {
+void generateSquareWave(SoundState *s, int16_t *buffer, int nSamples) {
 
-  double samples_per_cycle = (double)s->SampleRate / (double)s->Freq;
-  double half_cycle = samples_per_cycle / 2.0;
+  double samplesPerCycle = (double)s->SampleRate / (double)s->Freq;
+  double halfCycle = samplesPerCycle / 2.0;
 
-  for (int i = 0; i < n_samples; ++i) {
-    buffer[i] = (s->Phase < half_cycle) ? s->Amplitude : -s->Amplitude;
+  for (int i = 0; i < nSamples; ++i) {
+    buffer[i] = (s->Phase < halfCycle) ? s->Amplitude : -s->Amplitude;
 
     s->Phase += 1.0;
-    if (s->Phase >= samples_per_cycle) {
-      s->Phase -= samples_per_cycle;
+    if (s->Phase >= samplesPerCycle) {
+      s->Phase -= samplesPerCycle;
     }
   }
 }
@@ -241,13 +241,12 @@ void handle_key_event(SDL_Event *ev, Chip8 *c8) {
   }
 }
 
-void audioUpdate(SoundState *s, bool sound_active) {
-
+void audioUpdate(SoundState *s, bool soundActive) {
 
   // static so that we can resume
   static int16_t buffer[BUFFER_SAMPLES];
 
-  if (sound_active) {
+  if (soundActive) {
     if (!s->Playing) {
       SDL_FlushAudioStream(s->stream);
       s->Playing = true;
